@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI 發票對獎助手 | 綠色莫蘭迪風格</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#F9F7F3">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="apple-touch-icon" href="icon.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+
+    <style>
+        /* --------------------- GREEN MORANDI THEME --------------------- */
+        :root {
+            --bg-main: #F9F7F3; /* 淺米白/灰白 */
+            --color-text: #333333;
+            --accent-green: #A8B5A3; /* 柔和灰綠 (Primary) */
+            --accent-green-dark: #7D8B7E; /* 沉穩深綠 */
+            --accent-pink: #E4C7C2; /* 淺柔粉 (Secondary) */
+            --accent-pink-dark: #DDA0A0; /* 淺暖橘/乾燥玫瑰 (Success/Highlight) */
+            --color-light-gray: #E5E7EB; /* Gray-200 */
+        }
+
+        /* 1. Global Light Theme & Glassmorphism */
+        body { 
+            font-family: 'Noto Sans TC', sans-serif; 
+            background-color: var(--bg-main);
+            color: var(--color-text);
+            /* PWA 優化：禁止選取文字，更像原生 App */
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        /* 自定義玻璃擬態類別 (淺色系) */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.85); /* 淺白半透明 */
+            backdrop-filter: blur(12px);       /* 背景模糊 */
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 0, 0, 0.05); /* 微暗邊框 */
+        }
+
+        .glass-header {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid var(--color-light-gray);
+        }
+
+        /* 隱藏 Scrollbar */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* SweetAlert2 Theme Overrides (配合淺色主題) */
+        div:where(.swal2-container) div:where(.swal2-popup) {
+            background: white !important;
+            color: var(--color-text) !important;
+            border: 1px solid var(--color-light-gray) !important;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15) !important;
+        }
+        div:where(.swal2-input), div:where(.swal2-textarea) {
+            background: var(--bg-main) !important;
+            color: var(--color-text) !important;
+            border: 1px solid var(--color-light-gray) !important;
+            box-shadow: none !important;
+        }
+        div:where(.swal2-actions) button {
+             /* 儲存按鈕使用 Accent-Green */
+             background-color: var(--accent-green) !important;
+             color: white !important;
+        }
+        
+        /* Selection Highlight */
+        .invoice-card.selected { 
+            /* 使用 Accent-Green 作為主要選擇色 */
+            border: 2px solid var(--accent-green); 
+            box-shadow: 0 0 15px rgba(168, 181, 163, 0.5);
+            background: var(--accent-green) !important; /* 選擇時卡片底色變綠 */
+        }
+        .invoice-card.selected .invoice-num-input {
+             color: white !important; /* 選擇時號碼變白色 */
+             border-bottom-color: white !important;
+        }
+        .invoice-card.selected .invoice-date-text {
+            color: white !important;
+        }
+
+
+        .invoice-card.expired {
+            opacity: 0.5;
+            filter: grayscale(80%);
+        }
+        
+        /* PWA 優化：按鈕點擊無藍框 */
+        button, label, input { -webkit-tap-highlight-color: transparent; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <header class="glass-header p-4 sticky top-0 z-20">
+        <div class="flex justify-between items-center max-w-3xl mx-auto w-full">
+            <h1 class="text-xl font-bold text-[var(--accent-green-dark)] flex items-center gap-2">
+                <i class="fas fa-robot"></i> AI 發票對獎機
+            </h1>
+            <div class="flex gap-2">
+                <button onclick="openWinningNumbersModal()" class="text-gray-500 hover:text-[var(--accent-green)] transition-colors" title="中獎號碼">
+                    <i class="fas fa-list-ol fa-lg"></i>
+                </button>
+                <button onclick="openSettings()" class="text-gray-500 hover:text-[var(--accent-pink-dark)] transition-colors" title="設定">
+                    <i class="fas fa-cog fa-lg"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow overflow-y-auto p-4 pb-32 max-w-3xl mx-auto w-full no-scrollbar space-y-4" id="main-container">
+        
+        <div class="glass-panel rounded-2xl p-4 shadow-xl relative overflow-hidden flex justify-between items-center border-l-4 border-[var(--accent-green)]">
+             <div>
+                <h2 class="font-bold text-[var(--color-text)]">
+                    <i class="fas fa-calendar-check text-[var(--accent-pink-dark)] mr-1"></i> 目前對獎期別
+                </h2>
+                <p class="text-xs text-gray-500 mt-1">
+                    系統已載入 <span class="text-[var(--accent-green-dark)] font-bold" id="active-periods-count">2</span> 個月份的中獎號碼
+                </p>
+             </div>
+             <div class="text-right">
+                <div class="text-[10px] text-gray-500">今日日期</div>
+                <div class="font-mono font-bold text-[var(--color-text)]" id="current-date-display"></div>
+             </div>
+        </div>
+
+        <div class="flex justify-between items-center px-1">
+            <h2 class="text-lg font-bold text-[var(--color-text)]">收納夾 (<span id="invoice-count" class="text-[var(--accent-green-dark)]">0</span>)</h2>
+            <div class="flex gap-2">
+                <button onclick="toggleSelectAll()" class="text-xs bg-[var(--color-light-gray)] text-gray-700 px-3 py-1.5 rounded-full hover:bg-[var(--accent-pink)] transition">
+                    全選/取消
+                </button>
+                <button onclick="checkPrizes()" class="text-xs bg-gradient-to-r from-[var(--accent-green-dark)] to-[var(--accent-green)] text-white font-bold px-4 py-1.5 rounded-full shadow-lg hover:shadow-[var(--accent-green)]/40 transition transform hover:scale-105 active:scale-95">
+                    <i class="fas fa-search-dollar mr-1"></i> 一鍵對獎
+                </button>
+            </div>
+        </div>
+
+        <div id="invoice-grid" class="grid grid-cols-2 gap-4 pb-4">
+            </div>
+
+    </main>
+
+    <div class="fixed bottom-8 left-0 right-0 flex justify-center z-30 pointer-events-none">
+        <button onclick="openAddModal()" class="pointer-events-auto bg-[var(--accent-pink-dark)] text-white w-16 h-16 rounded-full flex items-center justify-center shadow-[0_0_20px_var(--accent-pink-dark)]/40 cursor-pointer hover:bg-[var(--accent-pink)]/80 transition transform hover:scale-110 active:scale-95">
+            <i class="fas fa-plus fa-xl"></i>
+        </button>
+    </div>
+
+    <div id="add-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 hidden opacity-0 transition-opacity duration-300">
+        <div class="glass-panel rounded-2xl p-6 w-full max-w-sm flex flex-col max-h-[85vh] transform scale-95 transition-transform duration-300 bg-white shadow-2xl" id="add-modal-content">
+            
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-bold text-lg text-[var(--color-text)]">
+                    <i class="fas fa-magic text-[var(--accent-green)] mr-2"></i>AI 智慧匯入
+                </h3>
+                <button onclick="closeAddModal()" class="text-gray-500 hover:text-[var(--accent-pink-dark)]"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-3 mb-6">
+                <label class="bg-[var(--color-light-gray)] hover:bg-[var(--accent-pink)] border border-gray-300 rounded-xl p-4 flex flex-col items-center cursor-pointer transition group">
+                    <i class="fas fa-camera text-2xl mb-2 text-[var(--accent-pink-dark)] group-hover:scale-110 transition"></i>
+                    <span class="text-xs text-[var(--color-text)]">拍照 (單張)</span>
+                    <input type="file" accept="image/*" capture="environment" class="hidden" onchange="handleAIUpload(this)">
+                </label>
+                <label class="bg-[var(--color-light-gray)] hover:bg-[var(--accent-pink)] border border-gray-300 rounded-xl p-4 flex flex-col items-center cursor-pointer transition group">
+                    <i class="fas fa-images text-2xl mb-2 text-[var(--accent-green-dark)] group-hover:scale-110 transition"></i>
+                    <span class="text-xs text-[var(--color-text)]">相簿 (多張)</span>
+                    <input type="file" accept="image/*" multiple class="hidden" onchange="handleAIUpload(this)">
+                </label>
+            </div>
+
+            <div class="text-[10px] text-center mb-2 px-3 py-1 bg-gray-100/50 rounded-full mx-auto cursor-pointer hover:bg-gray-200 transition border border-gray-300" id="api-status-pill" onclick="openSettings()">
+                <span>檢查 API Key 中...</span>
+            </div>
+
+            <div class="flex-1 overflow-y-auto min-h-[150px] space-y-2 mb-4 pr-1" id="pending-list">
+                <div class="text-center text-gray-500 text-xs py-8">
+                    選擇照片後，AI 將自動辨識：<br>1. 發票號碼<br>2. 發票月份 (判斷是否過期)
+                </div>
+            </div>
+
+            <div class="flex gap-2 shrink-0">
+                <button onclick="closeAddModal()" class="flex-1 py-3 text-gray-500 hover:text-[var(--color-text)] text-sm">取消</button>
+                <button onclick="savePendingInvoices()" id="btn-save-pending" class="flex-1 bg-[var(--accent-green-dark)] text-white rounded-xl font-bold shadow-lg hover:bg-[var(--accent-green)] disabled:opacity-50 disabled:cursor-not-allowed">
+                    加入收納夾
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="winning-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 hidden">
+        <div class="glass-panel rounded-2xl p-6 w-full max-w-md flex flex-col max-h-[85vh] bg-white shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-bold text-lg text-[var(--color-text)]">中獎號碼設定</h3>
+                <button onclick="closeWinningNumbersModal()" class="text-gray-500 hover:text-[var(--accent-pink-dark)]"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <div class="bg-[var(--accent-pink)]/20 p-3 rounded-lg text-xs text-[var(--accent-pink-dark)] mb-4 border border-[var(--accent-pink)]">
+                <i class="fas fa-info-circle mr-1"></i> 因瀏覽器安全限制，無法自動從外部網站抓取。請手動更新或確認下方預設資料。
+            </div>
+
+            <div class="flex-1 overflow-y-auto space-y-4 pr-2" id="winning-numbers-container">
+                </div>
+
+            <div class="mt-4 pt-4 border-t border-gray-300 flex gap-2">
+                 <button onclick="resetDefaultWinningNumbers()" class="text-xs text-[var(--accent-green-dark)] hover:underline px-2">還原預設值</button>
+                 <div class="flex-1"></div>
+                 <button onclick="closeWinningNumbersModal()" class="bg-[var(--accent-green-dark)] text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-[var(--accent-green)]">關閉</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="email-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[130] p-4 hidden">
+        <div class="glass-panel rounded-2xl p-6 w-full max-w-sm shadow-2xl bg-white">
+            <h3 class="font-bold text-lg mb-2 text-[var(--color-text)] flex items-center gap-2">
+                <i class="fas fa-envelope text-[var(--accent-pink-dark)]"></i> 寄送中獎報表
+            </h3>
+            <p class="text-xs text-gray-500 mb-4">將中獎發票製作成表格，寄送到您的信箱。</p>
+            <input type="email" id="emailjs-input" placeholder="your@email.com" class="w-full bg-[var(--color-light-gray)] p-3 rounded-xl mb-6 text-sm text-[var(--color-text)] border border-gray-300 outline-none focus:border-[var(--accent-green)]">
+            <div class="flex gap-2">
+                <button onclick="closeEmailModal()" class="flex-1 py-2 text-gray-500 hover:text-[var(--color-text)] transition-colors">取消</button>
+                <button id="btn-send-emailjs" onclick="handleSendEmailJS()" class="flex-1 bg-[var(--accent-green-dark)] text-white rounded-xl font-bold py-2 shadow-lg hover:bg-[var(--accent-green)] transition-all flex items-center justify-center gap-2">
+                    <span id="btn-text-emailjs">確認發送</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // PWA Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('SW registered!', reg))
+                    .catch(err => console.log('SW registration failed', err));
+            });
+        }
+
+        // --- 1. State & Data ---
+        let invoices = []; 
+        let settings = {
+            email: "oliver603@gmail.com",
+            googleApiKey: "" 
+        };
+        let pendingReceipts = []; 
+        let currentWinnersToSend = [];
+
+        // Database of Winning Numbers
+        let winningNumbersDB = {
+            "114-09": { 
+                periodName: "114年 09-10月",
+                special: "25834483", 
+                grand: "46587380",
+                first: ["41016094", "98081574", "07309261"],
+                sixth: [] 
+            },
+            "114-07": { 
+                periodName: "114年 07-08月",
+                special: "53960536", 
+                grand: "51509866",
+                first: ["43074088", "22870220", "38253117"],
+                sixth: [] 
+            }
+        };
+
+        // --- 2. Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            loadFromStorage();
+            
+            // Set current date display
+            const today = new Date();
+            document.getElementById('current-date-display').innerText = `${today.getFullYear()}/${(today.getMonth()+1).toString().padStart(2,'0')}/${today.getDate().toString().padStart(2,'0')}`;
+
+            if (!settings.googleApiKey) {
+                Swal.fire({
+                    title: '歡迎使用',
+                    text: '請先設定 Google Gemini API Key 以啟用 AI 辨識功能',
+                    icon: 'info',
+                    confirmButtonText: '去設定',
+                    background: 'white', color: 'var(--color-text)',
+                    customClass: { popup: 'swal2-popup' } // Apply custom styles
+                }).then(() => openSettings());
+            }
+
+            // Cleanup expired on load
+            cleanupExpiredInvoices();
+            
+            renderGallery();
+            updateApiStatusUI();
+            updateActivePeriodsCount();
+            
+            if (window.emailjs) window.emailjs.init("mYOFMMnqLdDxR0wjj");
+        });
+
+        function loadFromStorage() {
+            const savedInvoices = localStorage.getItem('invoice_app_data');
+            const savedSettings = localStorage.getItem('invoice_app_settings');
+            const savedWinning = localStorage.getItem('invoice_winning_db');
+            
+            if (savedInvoices) invoices = JSON.parse(savedInvoices);
+            if (savedSettings) settings = JSON.parse(savedSettings);
+            if (savedWinning) winningNumbersDB = JSON.parse(savedWinning);
+        }
+
+        function saveToStorage() {
+            localStorage.setItem('invoice_app_data', JSON.stringify(invoices));
+            localStorage.setItem('invoice_app_settings', JSON.stringify(settings));
+            localStorage.setItem('invoice_winning_db', JSON.stringify(winningNumbersDB));
+            updateApiStatusUI();
+            updateActivePeriodsCount();
+        }
+
+        // --- 3. Expiration Logic ---
+        function checkExpirationStatus(invoiceYearMonth) {
+            if (!invoiceYearMonth) return { expired: false, deadlineStr: "未知" };
+
+            let year, month;
+            let nums = invoiceYearMonth.replace(/\D/g, '-').split('-').filter(n => n);
+            
+            if (nums.length >= 2) {
+                let y = parseInt(nums[0]);
+                let m = parseInt(nums[1]);
+                if (y < 1911) year = y + 1911;
+                else year = y;
+                month = m;
+            } else {
+                return { expired: false, deadlineStr: "格式錯誤" };
+            }
+
+            let periodEndMonth = Math.ceil(month / 2) * 2; 
+            let redemptionEndYear = year;
+            let redemptionEndMonth = 0;
+            let redemptionEndDay = 5;
+
+            switch(periodEndMonth) {
+                case 2: redemptionEndMonth = 7; break;
+                case 4: redemptionEndMonth = 9; break;
+                case 6: redemptionEndMonth = 11; break;
+                case 8: 
+                    redemptionEndMonth = 1; 
+                    redemptionEndYear++; 
+                    break;
+                case 10: 
+                    redemptionEndMonth = 3; 
+                    redemptionEndYear++; 
+                    break;
+                case 12: 
+                    redemptionEndMonth = 5; 
+                    redemptionEndYear++; 
+                    break;
+            }
+
+            const deadline = new Date(redemptionEndYear, redemptionEndMonth - 1, redemptionEndDay, 23, 59, 59);
+            const now = new Date();
+            
+            return {
+                expired: now > deadline,
+                deadline: deadline,
+                deadlineStr: `${redemptionEndYear}/${redemptionEndMonth}/${redemptionEndDay}`
+            };
+        }
+
+        function cleanupExpiredInvoices() {
+            const initialLen = invoices.length;
+            let expiredCount = 0;
+            
+            invoices = invoices.filter(inv => {
+                if (!inv.date) return true; 
+                const status = checkExpirationStatus(inv.date);
+                if (status.expired) {
+                    expiredCount++;
+                    return false; 
+                }
+                return true;
+            });
+
+            if (expiredCount > 0) {
+                saveToStorage();
+                const Toast = Swal.mixin({
+                    toast: true, position: 'top-end', showConfirmButton: false, timer: 4000,
+                    background: 'white', color: 'var(--color-text)' // Light theme
+                });
+                Toast.fire({ icon: 'warning', title: `已自動移除 ${expiredCount} 張過期發票` });
+            }
+        }
+
+        // --- 4. UI Rendering (Fixed Empty State Crash) ---
+        function renderGallery() {
+            const grid = document.getElementById('invoice-grid');
+            document.getElementById('invoice-count').innerText = invoices.length;
+
+            if (invoices.length === 0) {
+                grid.innerHTML = `
+                    <div class="col-span-2 text-center text-gray-500 py-12 flex flex-col items-center" id="empty-state">
+                        <div class="w-16 h-16 rounded-full bg-[var(--color-light-gray)] flex items-center justify-center mb-4">
+                            <i class="fas fa-camera fa-2x text-gray-500"></i>
+                        </div>
+                        <p>收納夾是空的</p>
+                        <p class="text-xs mt-2 opacity-50">點擊下方相機按鈕開始</p>
+                    </div>
+                `;
+                return;
+            }
+
+            grid.innerHTML = invoices.map(inv => {
+                const expStatus = checkExpirationStatus(inv.date);
+                const deadlineText = expStatus.deadlineStr !== "未知" ? `領獎至: ${expStatus.deadlineStr}` : "";
+                
+                return `
+                <div class="invoice-card relative glass-panel rounded-xl overflow-hidden group transition-all duration-300 ${inv.selected ? 'selected' : 'border-[var(--color-light-gray)]'}" 
+                     onclick="toggleSelect('${inv.id}')">
+                    <div class="absolute top-2 right-2 z-10 bg-white/80 rounded-full p-1 shadow backdrop-blur-sm">
+                        <i class="fas ${inv.selected ? 'fa-check-circle text-[var(--accent-green-dark)]' : 'fa-circle text-gray-400'} fa-lg transition-colors"></i>
+                    </div>
+                    ${getStatusBadge(inv)}
+                    <div class="h-28 bg-gray-100 overflow-hidden relative border-b border-gray-200">
+                        <img src="${inv.image}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" loading="lazy">
+                        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white to-transparent h-10"></div>
+                    </div>
+                    <div class="p-3">
+                        <div class="w-full mb-2">
+                             <label class="text-[10px] text-gray-500 block">號碼 (8碼)</label>
+                             <input type="text" value="${inv.number || ''}" 
+                                 class="invoice-num-input w-full bg-transparent border-b border-gray-300 text-[var(--color-text)] font-mono font-bold focus:border-[var(--accent-green)] outline-none text-lg tracking-widest"
+                                 placeholder="AI辨識中"
+                                 onclick="event.stopPropagation()"
+                                 onchange="updateInvoiceNumber('${inv.id}', this.value)">
+                        </div>
+                        <div class="w-full flex justify-between items-center text-xs text-gray-500">
+                             <div class="invoice-date-text">
+                                <i class="far fa-calendar-alt mr-1"></i>${inv.date || '未知月份'}
+                             </div>
+                             <div class="text-[10px] text-gray-400">${deadlineText}</div>
+                        </div>
+                    </div>
+                </div>
+            `}).join('');
+        }
+
+        function getStatusBadge(inv) {
+            // 中獎: Accent Pink Dark (淺暖橘/乾燥玫瑰)
+            if (inv.status === 'win') return `<div class="absolute top-2 left-2 bg-[var(--accent-pink-dark)]/90 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-lg backdrop-blur-sm animate-pulse">中獎 $${inv.amount}</div>`;
+            // 未中獎: Accent Green Dark
+            if (inv.status === 'loss') return `<div class="absolute top-2 left-2 bg-[var(--accent-green-dark)]/90 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow backdrop-blur-sm">未中獎</div>`;
+            // 未對獎: Accent Pink
+            return `<div class="absolute top-2 left-2 bg-[var(--accent-pink)] text-[var(--color-text)] text-[10px] font-bold px-2 py-0.5 rounded shadow-lg">未對獎</div>`;
+        }
+
+        // --- 5. AI Processing (Robust Gemini with Fallback) ---
+        function openAddModal() {
+            const modal = document.getElementById('add-modal');
+            const content = document.getElementById('add-modal-content');
+            modal.classList.remove('hidden');
+            updateApiStatusUI();
+            
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                content.classList.remove('scale-95');
+                content.classList.add('scale-100');
+            }, 10);
+            
+            pendingReceipts = [];
+            renderPendingList();
+        }
+
+        function closeAddModal() {
+            const modal = document.getElementById('add-modal');
+            const content = document.getElementById('add-modal-content');
+            modal.classList.add('opacity-0');
+            content.classList.remove('scale-100');
+            content.classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 300);
+        }
+
+        async function handleAIUpload(input) {
+            if (!input.files || input.files.length === 0) return;
+            if (!settings.googleApiKey) {
+                Swal.fire({icon: 'warning', title: '缺少 API Key', text: '請先在設定中輸入 Google Gemini API Key', background: 'white', color: 'var(--color-text)'});
+                return;
+            }
+
+            const files = Array.from(input.files);
+            
+            const newItems = files.map(file => ({
+                id: Math.random().toString(36).substr(2, 9),
+                file,
+                status: 'analyzing', 
+                data: {},
+                preview: URL.createObjectURL(file) 
+            }));
+            
+            pendingReceipts = [...pendingReceipts, ...newItems];
+            renderPendingList();
+
+            await Promise.all(newItems.map(async (item) => {
+                try {
+                    const base64 = await fileToBase64(item.file);
+                    const result = await callGeminiAPI(base64);
+                    
+                    const exp = checkExpirationStatus(result.date);
+                    if (exp.expired) {
+                        item.status = 'error';
+                        item.error = '已過期 (' + exp.deadlineStr + ' 止)';
+                    } else {
+                        item.status = 'success';
+                        item.data = result;
+                        item.base64 = base64; 
+                    }
+                } catch (error) {
+                    console.error("Gemini API Error Details:", error);
+                    item.status = 'error';
+                    const msg = error.message.toLowerCase();
+                    if (msg.includes('key')) item.error = 'API Key 無效';
+                    else if (msg.includes('quota') || msg.includes('429')) item.error = '額度不足';
+                    else if (msg.includes('found')) item.error = '模型版本錯誤 (請更新)';
+                    else if (msg.includes('argument') || msg.includes('400')) item.error = '圖片無法處理';
+                    else item.error = '辨識失敗: ' + error.message;
+                }
+                renderPendingList();
+            }));
+            input.value = ''; 
+        }
+
+        async function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        // UPDATED: Robust API Call with Fallback Models
+        async function callGeminiAPI(base64String) {
+            const apiKey = settings.googleApiKey;
+            
+            // List of models to try in order.
+            const candidateModels = [
+                "gemini-2.5-flash-preview-09-2025",
+                "gemini-1.5-flash",
+                "gemini-1.5-pro"
+            ];
+            
+            let lastError = null;
+
+            const prompt = `
+                Analyze this image of a Taiwan Uniform Invoice (統一發票).
+                Please extract strictly ONLY these two fields and return a valid JSON object:
+                1. "number": The 8-digit invoice number (e.g., "12345678"). Ignore the 2-letter prefix.
+                2. "date": The Year-Month period found on the invoice (e.g., "114-09", "114年09-10月", or "2025-09"). Format it as "YYY-MM" (ROC year) or "YYYY-MM" (AD year).
+                
+                If the number is unclear, leave it empty.
+                Do NOT extract amount or store name.
+                JSON format: {"number": "...", "date": "..."}
+            `;
+
+            const payload = {
+                contents: [{
+                    parts: [
+                        { text: prompt },
+                        { inlineData: { mimeType: "image/jpeg", data: base64String.split(',')[1] } }
+                    ]
+                }]
+            };
+
+            // Loop through models until one works
+            for (const model of candidateModels) {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+                try {
+                    console.log(`Trying model: ${model}...`);
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        const message = errorData.error?.message || response.statusText;
+                        
+                        // If 404 Not Found (Model not supported), try next.
+                        // Other errors (403 Key, 429 Quota) should throw immediately.
+                        if (response.status === 404) {
+                            console.warn(`Model ${model} not found, trying next...`);
+                            lastError = new Error(`Model ${model} not found`);
+                            continue; // Try next model
+                        } else {
+                            throw new Error(message); // Fatal error for this key/request
+                        }
+                    }
+
+                    const data = await response.json();
+                    if (!data.candidates || !data.candidates[0]) {
+                        throw new Error("No response candidates");
+                    }
+                    
+                    const text = data.candidates[0].content.parts[0].text;
+                    const jsonMatch = text.match(/\{[\s\S]*\}/);
+                    
+                    if (jsonMatch) return JSON.parse(jsonMatch[0]);
+                    return { number: "", date: "" }; // Fallback empty
+
+                } catch (e) {
+                    lastError = e;
+                    if (!e.message.includes("not found")) {
+                        throw e; // Fatal error
+                    }
+                }
+            }
+            
+            throw lastError || new Error("All models failed");
+        }
+
+        function renderPendingList() {
+            const container = document.getElementById('pending-list');
+            if (pendingReceipts.length === 0) {
+                container.innerHTML = `<div class="text-center text-gray-500 text-xs py-8">選擇照片後，AI 將自動辨識</div>`;
+                return;
+            }
+
+            container.innerHTML = pendingReceipts.map(item => `
+                <div class="flex items-center gap-3 p-2 rounded-xl bg-[var(--color-light-gray)] border border-gray-300">
+                    <img src="${item.preview}" class="w-12 h-12 rounded object-cover bg-gray-200">
+                    
+                    <div class="flex-1 min-w-0">
+                        ${item.status === 'analyzing' ? `
+                            <div class="flex items-center gap-2 text-xs text-[var(--accent-green-dark)]">
+                                <i class="fas fa-spinner fa-spin"></i> AI 識別中...
+                            </div>
+                        ` : item.status === 'error' ? `
+                            <div class="text-xs text-red-500">
+                                <i class="fas fa-trash-alt mr-1"></i> ${item.error}
+                            </div>
+                        ` : `
+                            <div class="flex items-center gap-2">
+                                <span class="font-mono font-bold text-lg text-[var(--color-text)] tracking-widest">${item.data.number || '無號碼'}</span>
+                                <i class="fas fa-check-circle text-[var(--accent-green)] text-xs"></i>
+                            </div>
+                            <div class="text-[10px] text-gray-500">
+                                ${item.data.date || '未知月份'}
+                            </div>
+                        `}
+                    </div>
+
+                    <button onclick="removePending('${item.id}')" class="text-gray-500 hover:text-red-500 px-2">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `).join('');
+
+            const validCount = pendingReceipts.filter(p => p.status === 'success' && p.data.number).length;
+            document.getElementById('btn-save-pending').innerHTML = validCount > 0 ? `儲存 ${validCount} 張發票` : `加入收納夾`;
+        }
+
+        function removePending(id) {
+            pendingReceipts = pendingReceipts.filter(p => p.id !== id);
+            renderPendingList();
+        }
+
+        async function savePendingInvoices() {
+            const validItems = pendingReceipts.filter(p => p.status === 'success');
+            if (validItems.length === 0) {
+                closeAddModal();
+                return;
+            }
+
+            Swal.showLoading();
+
+            for (const item of validItems) {
+                const resizedBase64 = await resizeBase64(item.base64, 800);
+                invoices.unshift({
+                    id: Date.now() + Math.random().toString(),
+                    image: resizedBase64,
+                    number: item.data.number || '',
+                    date: item.data.date,
+                    amount: 0, 
+                    status: 'unchecked',
+                    selected: true
+                });
+            }
+
+            saveToStorage();
+            renderGallery();
+            closeAddModal();
+            Swal.close();
+        }
+
+        function resizeBase64(base64, maxWidth) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+                    if (width > maxWidth) {
+                        height *= maxWidth / width;
+                        width = maxWidth;
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.6));
+                };
+                img.src = base64;
+            });
+        }
+
+        // --- 6. Prize Checking Logic ---
+        function checkPrizes() {
+            const selectedInvoices = invoices.filter(i => i.selected);
+            if (selectedInvoices.length === 0) {
+                Swal.fire({icon: 'info', title: '請先勾選發票', background: 'white', color: 'var(--color-text)'});
+                return;
+            }
+
+            let winners = [];
+            let losersToDelete = [];
+            let skippedCount = 0;
+            let skippedPeriods = new Set();
+
+            selectedInvoices.forEach(inv => {
+                if (!inv.number || inv.number.length < 8) return;
+
+                const periodKey = getPeriodKeyFromDate(inv.date);
+                if (!periodKey || !winningNumbersDB[periodKey]) {
+                    skippedCount++;
+                    if(periodKey) skippedPeriods.add(periodKey);
+                    return;
+                }
+
+                const rules = winningNumbersDB[periodKey];
+                const prize = calculatePrizeAmount(inv.number, rules);
+                
+                inv.amount = prize;
+                if (prize > 0) {
+                    inv.status = 'win';
+                    winners.push(inv);
+                } else {
+                    inv.status = 'loss';
+                    losersToDelete.push(inv.id);
+                }
+                inv.selected = false;
+            });
+
+            if (losersToDelete.length > 0) {
+                invoices = invoices.filter(inv => !losersToDelete.includes(inv.id));
+            }
+            saveToStorage();
+            renderGallery();
+
+            if (winners.length > 0) {
+                const totalPrize = winners.reduce((sum, w) => sum + w.amount, 0);
+                Swal.fire({
+                    title: '🎉 恭喜中獎！',
+                    html: `發現 <b>${winners.length}</b> 張中獎發票！<br>總金額: <b class="text-[var(--accent-pink-dark)] text-2xl">$${totalPrize}</b>`,
+                    icon: 'success',
+                    background: 'white', color: 'var(--color-text)',
+                    showCancelButton: true,
+                    confirmButtonText: '發送 Email',
+                    confirmButtonColor: 'var(--accent-green-dark)'
+                }).then((res) => {
+                    if (res.isConfirmed) openEmailModal(winners);
+                });
+            } else if (skippedCount > 0) {
+                Swal.fire({
+                    title: '尚未開獎或無資料',
+                    html: `您勾選的 <b>${skippedCount}</b> 張發票所屬期別 (${Array.from(skippedPeriods).join(', ')}) 尚未開獎，或系統未載入該期中獎號碼。<br><span class="text-xs text-gray-500">請確認「中獎號碼」設定，或等待開獎日 (單數月25日) 再試。</span>`,
+                    icon: 'warning',
+                    background: 'white', color: 'var(--color-text)',
+                    confirmButtonColor: 'var(--accent-green-dark)'
+                });
+            } else {
+                Swal.fire({
+                    title: '對獎完成',
+                    text: losersToDelete.length > 0 ? `已清除 ${losersToDelete.length} 張未中獎發票。` : "沒有發現中獎發票。",
+                    icon: 'info',
+                    background: 'white', color: 'var(--color-text)'
+                });
+            }
+        }
+
+        function getPeriodKeyFromDate(dateStr) {
+            if (!dateStr) return null;
+            let nums = dateStr.replace(/\D/g, '-').split('-').filter(n=>n);
+            if (nums.length < 2) return null;
+            let y = parseInt(nums[0]);
+            let m = parseInt(nums[1]);
+            if (y > 1911) y -= 1911; 
+            let periodM = (m % 2 === 0) ? m - 1 : m;
+            return `${y}-${periodM.toString().padStart(2,'0')}`;
+        }
+
+        function calculatePrizeAmount(userNum, rules) {
+            if (!rules) return 0;
+            userNum = userNum.toString().trim();
+            if (userNum === rules.special) return 10000000;
+            if (userNum === rules.grand) return 2000000;
+            for (let target of rules.first) {
+                if (userNum === target) return 200000;
+                if (userNum.slice(1) === target.slice(1)) return 40000;
+                if (userNum.slice(2) === target.slice(2)) return 10000;
+                if (userNum.slice(3) === target.slice(3)) return 4000;
+                if (userNum.slice(4) === target.slice(4)) return 1000;
+                if (userNum.slice(5) === target.slice(5)) return 200;
+            }
+            return 0;
+        }
+
+        // --- 7. Winning Numbers UI ---
+        function openWinningNumbersModal() {
+            renderWinningNumbersList();
+            document.getElementById('winning-modal').classList.remove('hidden');
+        }
+
+        function closeWinningNumbersModal() {
+            document.getElementById('winning-modal').classList.add('hidden');
+        }
+
+        function renderWinningNumbersList() {
+            const container = document.getElementById('winning-numbers-container');
+            const keys = Object.keys(winningNumbersDB).sort().reverse();
+            container.innerHTML = keys.map(key => {
+                const data = winningNumbersDB[key];
+                return `
+                <div class="bg-[var(--color-light-gray)] rounded-xl p-4 border border-gray-300">
+                    <div class="flex justify-between items-center mb-2">
+                        <h4 class="text-[var(--accent-green-dark)] font-bold text-sm">${data.periodName || key}</h4>
+                        <span class="text-[10px] text-gray-500 font-mono">${key}</span>
+                    </div>
+                    <div class="space-y-1 text-xs">
+                        <div class="flex justify-between"><span class="text-gray-500">特別獎</span> <span class="text-[var(--accent-pink-dark)] font-mono">${data.special}</span></div>
+                        <div class="flex justify-between"><span class="text-gray-500">特獎</span> <span class="text-[var(--accent-pink-dark)] font-mono">${data.grand}</span></div>
+                        <div class="flex justify-between"><span class="text-gray-500">頭獎</span> <span class="text-[var(--accent-pink-dark)] font-mono text-right">${data.first.join('<br>')}</span></div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        function updateActivePeriodsCount() {
+            const count = Object.keys(winningNumbersDB).length;
+            document.getElementById('active-periods-count').innerText = count;
+        }
+
+        function resetDefaultWinningNumbers() {
+             Swal.fire({
+                title: '重置資料?',
+                text: '這將會恢復為預設的 114年 9-10月與 7-8月中獎號碼。',
+                icon: 'warning',
+                showCancelButton: true,
+                background: 'white', color: 'var(--color-text)',
+                confirmButtonColor: 'var(--accent-green-dark)'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    localStorage.removeItem('invoice_winning_db');
+                    location.reload(); 
+                }
+            });
+        }
+
+        // --- 8. Utils & Email ---
+        function toggleSelect(id) {
+            const idx = invoices.findIndex(i => i.id === id);
+            if (idx > -1) {
+                invoices[idx].selected = !invoices[idx].selected;
+                renderGallery();
+            }
+        }
+
+        function toggleSelectAll() {
+            const allSelected = invoices.every(i => i.selected);
+            invoices.forEach(i => i.selected = !allSelected);
+            renderGallery();
+        }
+
+        function updateInvoiceNumber(id, newVal) {
+            const idx = invoices.findIndex(i => i.id === id);
+            if (idx > -1) {
+                invoices[idx].number = newVal;
+                saveToStorage();
+            }
+        }
+        
+        function updateApiStatusUI() {
+            const pill = document.getElementById('api-status-pill');
+            if (settings.googleApiKey) {
+                // Success: Accent Green
+                pill.innerHTML = `<span class="w-2 h-2 rounded-full bg-[var(--accent-green)] inline-block mr-1"></span> AI 準備就緒`;
+                pill.className = "text-[10px] text-center mb-2 px-3 py-1 bg-[var(--accent-green)]/20 text-[var(--accent-green-dark)] rounded-full mx-auto border border-[var(--accent-green)]/30 cursor-pointer";
+            } else {
+                // Error: Accent Pink Dark
+                pill.innerHTML = `<span class="w-2 h-2 rounded-full bg-[var(--accent-pink-dark)] inline-block mr-1"></span> 未設定 API Key (點此設定)`;
+                pill.className = "text-[10px] text-center mb-2 px-3 py-1 bg-[var(--accent-pink-dark)]/20 text-[var(--accent-pink-dark)] rounded-full mx-auto border border-[var(--accent-pink-dark)]/30 cursor-pointer animate-pulse";
+            }
+        }
+
+        function openSettings() {
+            Swal.fire({
+                title: '⚙️ 設定',
+                html: `
+                    <div class="text-left mb-2 text-xs text-gray-500 flex justify-between items-center">
+                        <span>Google Gemini API Key</span>
+                        <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-[10px] bg-[var(--accent-green-dark)] text-white px-3 py-1.5 rounded-full font-bold hover:bg-[var(--accent-green)] no-underline shadow-lg transform transition hover:scale-105">
+                            <i class="fas fa-key mr-1"></i>取得免費 Key
+                        </a>
+                    </div>
+                    <input id="swal-apikey" class="swal2-input mb-4" type="password" value="${settings.googleApiKey || ''}" placeholder="請貼上您的 API Key">
+                    <div class="text-left mb-2 text-xs text-gray-500">Email</div>
+                    <input id="swal-email" class="swal2-input" value="${settings.email}">
+                `,
+                background: 'white', color: 'var(--color-text)',
+                showCancelButton: true,
+                confirmButtonText: '儲存',
+                confirmButtonColor: 'var(--accent-green-dark)',
+                preConfirm: () => ({
+                    googleApiKey: document.getElementById('swal-apikey').value.trim(),
+                    email: document.getElementById('swal-email').value
+                })
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    settings.googleApiKey = result.value.googleApiKey;
+                    settings.email = result.value.email;
+                    saveToStorage();
+                    Swal.fire({icon: 'success', title: '已儲存', background: 'white', color: 'var(--color-text)', timer: 1500, showConfirmButton: false});
+                }
+            });
+        }
+
+        function openEmailModal(winners) {
+            currentWinnersToSend = winners;
+            document.getElementById('emailjs-input').value = settings.email;
+            document.getElementById('email-modal').classList.remove('hidden');
+        }
+
+        function closeEmailModal() {
+            document.getElementById('email-modal').classList.add('hidden');
+        }
+
+        async function handleSendEmailJS() {
+            const emailInput = document.getElementById('emailjs-input').value;
+            if(!emailInput) return;
+            settings.email = emailInput;
+            saveToStorage();
+            
+            const btn = document.getElementById('btn-send-emailjs');
+            btn.innerText = "發送中...";
+            
+            try {
+                let tableRows = currentWinnersToSend.map(item => `
+                    <tr>
+                        <td style="border:1px solid #ddd;padding:8px">${item.date}</td>
+                        <td style="border:1px solid #ddd;padding:8px;font-weight:bold;color:var(--accent-green-dark)">${item.number}</td>
+                        <td style="border:1px solid #ddd;padding:8px;color:var(--accent-pink-dark);font-weight:bold">$${item.amount}</td>
+                    </tr>`).join('');
+                
+                await window.emailjs.send("service_5yh7x6g", "template_dlbyml8", {
+                    email: emailInput,
+                    subject: "【發票中獎通知】",
+                    // 調整 Email Table 樣式顏色
+                    message: `<table style="width:100%;border-collapse:collapse;font-family:'Noto Sans TC', sans-serif;"><thead><tr style="background:var(--accent-pink)"><th>月份</th><th>號碼</th><th>獎金</th></tr></thead><tbody>${tableRows}</tbody></table>`
+                });
+                
+                Swal.fire({icon: 'success', title: '發送成功', background: 'white', color: 'var(--color-text)'});
+                closeEmailModal();
+            } catch(e) {
+                console.error(e);
+                Swal.fire({icon: 'error', title: '發送失敗', background: 'white', color: 'var(--color-text)'});
+            } finally {
+                btn.innerText = "確認發送";
+            }
+        }
+    </script>
+</body>
+</html>
