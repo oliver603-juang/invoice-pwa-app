@@ -1,4 +1,6 @@
-const CACHE_NAME = 'invoice-helper-v1';
+// 修改這裡：把 v1 改成 v2
+const CACHE_NAME = 'invoice-helper-v2';
+
 const urlsToCache = [
   './',
   './index.html',
@@ -11,6 +13,7 @@ const urlsToCache = [
 ];
 
 self.addEventListener('install', event => {
+  self.skipWaiting(); // 新增這行：強制立即更新
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
