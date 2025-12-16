@@ -1,7 +1,8 @@
 {
   "name": "AI 發票對獎助手",
   "short_name": "發票對獎",
-  "start_url": "./index.html",
+  "start_url": "/invoice-pwa-app/index.html",
+  "scope": "/invoice-pwa-app/",
   "display": "standalone",
   "background_color": "#F9F7F3",
   "theme_color": "#F9F7F3",
